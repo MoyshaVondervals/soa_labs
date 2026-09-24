@@ -1,0 +1,757 @@
+openapi: 3.0.3
+
+info:
+  title: Worker Collection Service
+  version: 1.0.0
+  description: Управление работниками.
+
+servers:
+  - url: https://se.ifmo.ru/~s409361/soa1-worker-hr
+    description: Helios server
+
+security: []
+
+tags:
+  - name: Workers
+    description: CRUD работников
+  - name: Worker queries
+    description: Поиск и статистика
+  - name: Worker organizations
+    description: Назначение и перенос
+
+paths:
+  /api/workers:
+    get:
+      tags: [Workers]
+      operationId: getWorkers
+      summary: Получить страницу работников
+      description: Пагинация, сортировка и фильтрация по любым полям, включая вложенные.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Filter'
+      responses:
+        '200':
+          description: Страница работников успешно получена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Workers]
+      operationId: createWorker
+      summary: Добавить работника
+      description: Создаёт работника; id и creationDate генерируются автоматически.
+      parameters:
+        - $ref: '#/components/parameters/Worker'
+      responses:
+        '201':
+          description: Работник создан
+          headers:
+            Location:
+              description: URL созданного работника
+              schema:
+                type: string
+                format: uri
+              example: /api/workers/42
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkerId'
+
+    get:
+      tags: [Workers]
+      operationId: getWorkerById
+      summary: Получить работника по идентификатору
+      description: Возвращает работника по id.
+      responses:
+        '200':
+          description: Работник найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [Workers]
+      operationId: replaceWorker
+      summary: Полностью обновить работника
+      description: Заменяет изменяемые поля; id, creationDate и организация сохраняются.
+      parameters:
+        - $ref: '#/components/parameters/Worker'
+      responses:
+        '200':
+          description: Работник обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [Workers]
+      operationId: deleteWorker
+      summary: Удалить работника
+      description: Удаляет работника и его связь с организацией.
+      responses:
+        '204':
+          description: Работник удалён; тело ответа отсутствует
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/{id}/organization:
+    parameters:
+      - $ref: '#/components/parameters/WorkerId'
+    get:
+      tags: [Worker organizations]
+      operationId: getWorkerOrganization
+      summary: Получить принадлежность работника организации
+      description: Возвращает работника и его организацию; до назначения organizationId равен null.
+      responses:
+        '200':
+          description: Текущая принадлежность работника
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerOrganization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Worker organizations]
+      operationId: setWorkerOrganization
+      summary: Назначить или переместить работника в организацию
+      description: |
+        Атомарно проверяет expectedOrganizationId и меняет организацию на organizationId.
+        Для первого назначения expectedOrganizationId=null. Поля Worker сохраняются.
+        Организации должны существовать; при ошибке изменений нет.
+      parameters:
+        - name: assignment
+          in: query
+          required: true
+          description: JSON назначения, передаваемый в URL с percent-encoding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAssignment'
+              example:
+                expectedOrganizationId: 10
+                organizationId: 20
+      responses:
+        '200':
+          description: Принадлежность изменена; поля работника сохранены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerOrganization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Текущая организация не совпадает с ожидаемой либо исходная и целевая организации совпадают
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: Работник или организация отсутствует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/salary/sum:
+    get:
+      tags: [Worker queries]
+      operationId: getSalarySum
+      summary: Рассчитать сумму зарплат
+      description: Сумма salary всех работников.
+      responses:
+        '200':
+          description: Сумма зарплат рассчитана; для пустой коллекции возвращается 0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalarySum'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/position/greater-than/{position}:
+    get:
+      tags: [Worker queries]
+      operationId: countWorkersWithPositionGreaterThan
+      summary: Посчитать работников с большей должностью
+      description: |
+        Считает работников с должностью выше заданной в порядке:
+        `MANAGER < LABORER < BAKER < MANAGER_OF_CLEANING`.
+      parameters:
+        - $ref: '#/components/parameters/Position'
+      responses:
+        '200':
+          description: Количество работников рассчитано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/name/contains/{substring}:
+    get:
+      tags: [Worker queries]
+      operationId: getWorkersByNameSubstring
+      summary: Найти работников по подстроке имени
+      description: Регистрозависимый поиск подстроки в name. Нет совпадений — пустой массив.
+      parameters:
+        - $ref: '#/components/parameters/NameSubstring'
+      responses:
+        '200':
+          description: Результаты поиска
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    WorkerId:
+      name: id
+      in: path
+      required: true
+      description: Уникальный идентификатор работника
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 42
+
+    Position:
+      name: position
+      in: path
+      required: true
+      description: Должность, с которой сравниваются должности работников
+      schema:
+        $ref: '#/components/schemas/Position'
+      example: LABORER
+
+    NameSubstring:
+      name: substring
+      in: path
+      required: true
+      description: Непустая искомая подстрока; специальные символы должны быть percent-encoded
+      schema:
+        type: string
+        minLength: 1
+      example: Ivan
+
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Порядковый номер страницы, начиная с 1
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        default: 1
+
+    PageSize:
+      name: size
+      in: query
+      required: false
+      description: Число элементов на странице
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 1000
+        default: 20
+
+    Sort:
+      name: sort
+      in: query
+      required: false
+      description: |
+        `поле:asc` или `поле:desc`. Повторяемый; приоритет слева направо. Поля:
+        `id`, `name`, `coordinates.x`, `coordinates.y`, `creationDate`, `salary`,
+        `endDate`, `position`, `status`, `person.passportID`, `person.eyeColor`,
+        `person.hairColor`, `person.nationality`, `person.location.x`,
+        `person.location.y`, `person.location.z`, `person.location.name`.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          pattern: '^(id|name|coordinates\.x|coordinates\.y|creationDate|salary|endDate|position|status|person\.passportID|person\.eyeColor|person\.hairColor|person\.nationality|person\.location\.x|person\.location\.y|person\.location\.z|person\.location\.name):(asc|desc)$'
+      example:
+        - salary:desc
+        - name:asc
+
+    Filter:
+      name: filter
+      in: query
+      required: false
+      description: |
+        `поле:оператор:значение`. Повторяемый, условия связаны AND; поля как в sort.
+        Операторы: eq, ne, gt, gte, lt, lte, contains (только строки).
+        Для nullable-полей допустимы eq/ne с null. Двоеточие в значении — %3A.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          minLength: 5
+      example:
+        - salary:gte:50000
+        - person.eyeColor:eq:BLACK
+
+    Worker:
+      name: worker
+      in: query
+      required: true
+      description: JSON работника без id и creationDate; передаётся в URL с percent-encoding.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkerInput'
+          example:
+            name: Ivan Petrov
+            coordinates:
+              x: 15
+              y: 714
+            salary: 120000.5
+            endDate: null
+            position: MANAGER
+            status: HIRED
+            person:
+              passportID: '4010123456'
+              eyeColor: BROWN
+              hairColor: BLACK
+              nationality: GERMANY
+              location:
+                x: 10.5
+                y: 20.25
+                z: 3
+                name: Main office
+
+  responses:
+    BadRequest:
+      description: Отсутствует параметр или неверен синтаксис URL/JSON, тип либо формат
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: '2026-09-23T17:00:00+03:00'
+            status: 400
+            error: Bad Request
+            message: Query parameter worker contains malformed JSON
+            path: /api/workers
+
+    Gone:
+      description: Работник отсутствует или удалён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: '2026-09-23T17:00:00+03:00'
+            status: 410
+            error: Gone
+            message: Worker with id 42 does not exist
+            path: /api/workers/42
+
+    UnprocessableEntity:
+      description: Нарушены ограничения полей или правила sort/filter
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+    NotAcceptable:
+      description: Запрошен неподдерживаемый формат ответа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalServerError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Worker:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - coordinates
+        - creationDate
+        - salary
+        - position
+        - status
+        - person
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+          readOnly: true
+          description: Уникальный автоматически генерируемый идентификатор
+          example: 42
+        name:
+          type: string
+          minLength: 1
+          example: Ivan Petrov
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Автоматически генерируемая дата создания
+          example: '2026-09-23T17:00:00+03:00'
+        salary:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+          example: 120000.5
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        position:
+          $ref: '#/components/schemas/Position'
+        status:
+          $ref: '#/components/schemas/Status'
+        person:
+          $ref: '#/components/schemas/Person'
+
+    WorkerInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - coordinates
+        - salary
+        - position
+        - status
+        - person
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: Ivan Petrov
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        salary:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+          example: 120000.5
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        position:
+          $ref: '#/components/schemas/Position'
+        status:
+          $ref: '#/components/schemas/Status'
+        person:
+          $ref: '#/components/schemas/Person'
+
+    Coordinates:
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          format: int64
+          example: 15
+        y:
+          type: integer
+          format: int64
+          maximum: 714
+          example: 714
+
+    Person:
+      type: object
+      additionalProperties: false
+      required: [eyeColor, hairColor]
+      properties:
+        passportID:
+          type: string
+          nullable: true
+          example: '4010123456'
+        eyeColor:
+          $ref: '#/components/schemas/EyeColor'
+        hairColor:
+          $ref: '#/components/schemas/HairColor'
+        nationality:
+          $ref: '#/components/schemas/Country'
+        location:
+          $ref: '#/components/schemas/Location'
+
+    Location:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required: [x, y, z]
+      properties:
+        x:
+          type: number
+          format: float
+          example: 10.5
+        y:
+          type: number
+          format: double
+          example: 20.25
+        z:
+          type: integer
+          format: int32
+          example: 3
+        name:
+          type: string
+          nullable: true
+          example: Main office
+
+    Position:
+      type: string
+      enum:
+        - MANAGER
+        - LABORER
+        - BAKER
+        - MANAGER_OF_CLEANING
+
+    Status:
+      type: string
+      enum:
+        - FIRED
+        - HIRED
+        - RECOMMENDED_FOR_PROMOTION
+        - REGULAR
+        - PROBATION
+
+    EyeColor:
+      type: string
+      description: Цвет глаз
+      enum: [BLACK, WHITE, BROWN]
+
+    HairColor:
+      type: string
+      description: Цвет волос
+      enum: [RED, BLACK, ORANGE, WHITE]
+
+    Country:
+      type: string
+      nullable: true
+      enum: [USA, GERMANY, CHINA, VATICAN, null]
+
+    OrganizationAssignment:
+      type: object
+      additionalProperties: false
+      required: [expectedOrganizationId, organizationId]
+      properties:
+        expectedOrganizationId:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: Ожидаемая исходная организация; null только для первого назначения
+          example: 10
+        organizationId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Целевая организация из предварительно настроенного справочника
+          example: 20
+
+    WorkerOrganization:
+      type: object
+      additionalProperties: false
+      required: [worker, organizationId]
+      properties:
+        worker:
+          $ref: '#/components/schemas/Worker'
+        organizationId:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: Текущая организация; null, если работник ещё не назначен
+          example: 20
+
+    WorkerPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Worker'
+        page:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 1
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 20
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 2
+
+    SalarySum:
+      type: object
+      additionalProperties: false
+      required: [sum]
+      properties:
+        sum:
+          type: number
+          format: double
+          example: 530000.75
+
+    CountResult:
+      type: object
+      additionalProperties: false
+      required: [count]
+      properties:
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 4
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [timestamp, status, error, message, path]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          format: int32
+          minimum: 400
+          maximum: 599
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required: [timestamp, status, error, message, path, violations]
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Error/properties/timestamp'
+        status:
+          type: integer
+          enum: [422]
+        error:
+          type: string
+          example: Unprocessable Entity
+        message:
+          $ref: '#/components/schemas/Error/properties/message'
+        path:
+          $ref: '#/components/schemas/Error/properties/path'
+        violations:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                example: salary
+              message:
+                type: string
+                example: must be greater than 0

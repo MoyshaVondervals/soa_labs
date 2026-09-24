@@ -1,0 +1,273 @@
+openapi: 3.0.3
+
+info:
+  title: HR Service
+  version: 1.0.0
+  description: Кадровые операции через Worker API.
+
+servers:
+  - url: https://se.ifmo.ru/~s409361/soa1-worker-hr
+    description: Helios server
+
+security: []
+
+tags:
+  - name: HR
+    description: Увольнение и перенос
+
+paths:
+  /hr/fire/{id}:
+    patch:
+      tags: [HR]
+      operationId: fireWorker
+      summary: Уволить работника
+      description: |
+        Через GET/PUT `/api/workers/{id}` устанавливает status=FIRED.
+        Остальные поля и последнее место работы сохраняются. Повторный вызов допустим.
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Работник уволен либо уже имел статус FIRED
+          content:
+            application/json:
+              schema:
+                $ref: './worker-service.yaml#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/WorkerGone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /hr/move/{worker-id}/{id-from}/{id-to}:
+    post:
+      tags: [HR]
+      operationId: moveWorker
+      summary: Переместить работника между организациями
+      description: |
+        Через PUT `/api/workers/{id}/organization` передаёт assignment:
+        expectedOrganizationId=id-from, organizationId=id-to. Все поля Worker,
+        включая position и salary, сохраняются. При 502/503/504 перед повтором
+        проверьте текущую организацию через GET того же ресурса.
+      parameters:
+        - $ref: '#/components/parameters/WorkerIdDashed'
+        - $ref: '#/components/parameters/OrganizationIdFrom'
+        - $ref: '#/components/parameters/OrganizationIdTo'
+      responses:
+        '200':
+          description: Работник перемещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoveResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/HrGone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+components:
+  parameters:
+    WorkerId:
+      name: id
+      in: path
+      required: true
+      description: ID работника
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 42
+
+    WorkerIdDashed:
+      name: worker-id
+      in: path
+      required: true
+      description: ID работника
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 42
+
+    OrganizationIdFrom:
+      name: id-from
+      in: path
+      required: true
+      description: Идентификатор исходной организации
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 10
+
+    OrganizationIdTo:
+      name: id-to
+      in: path
+      required: true
+      description: Идентификатор целевой организации
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 20
+
+  responses:
+    BadRequest:
+      description: Параметр отсутствует, имеет неверный тип или URL невозможно разобрать
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    WorkerGone:
+      description: Работник отсутствует или удалён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    HrGone:
+      description: Работник или организация отсутствует
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Conflict:
+      description: Работник не состоит в id-from либо id-from совпадает с id-to
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    UnprocessableEntity:
+      description: Идентификатор должен быть больше 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+    BadGateway:
+      description: Некорректный ответ Worker API
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ServiceUnavailable:
+      description: Worker API временно недоступен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    GatewayTimeout:
+      description: Превышено время ожидания Worker API
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalServerError:
+      description: Внутренняя ошибка HR Service
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    MoveResult:
+      type: object
+      additionalProperties: false
+      required: [worker, organizationFrom, organizationTo]
+      properties:
+        worker:
+          $ref: './worker-service.yaml#/components/schemas/Worker'
+        organizationFrom:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 10
+        organizationTo:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 20
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [timestamp, status, error, message, path]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-23T17:00:00+03:00'
+        status:
+          type: integer
+          format: int32
+          minimum: 400
+          maximum: 599
+          example: 410
+        error:
+          type: string
+          example: Gone
+        message:
+          type: string
+          example: Worker with id 42 does not exist
+        path:
+          type: string
+          example: /hr/fire/42
+
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required: [timestamp, status, error, message, path, violations]
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Error/properties/timestamp'
+        status:
+          type: integer
+          enum: [422]
+        error:
+          type: string
+          example: Unprocessable Entity
+        message:
+          $ref: '#/components/schemas/Error/properties/message'
+        path:
+          $ref: '#/components/schemas/Error/properties/path'
+        violations:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                example: worker-id
+              message:
+                type: string
+                example: must be greater than 0
