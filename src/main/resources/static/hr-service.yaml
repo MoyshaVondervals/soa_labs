@@ -22,31 +22,25 @@ paths:
       operationId: fireWorker
       summary: Уволить работника
       description: |
-        Через GET/PUT `/api/workers/{id}` устанавливает status=FIRED.
-        Остальные поля и последнее место работы сохраняются. Повторный вызов допустим.
+        Перенаправляет PATCH-запрос на `/api/workers/{id}?status=FIRED` первого
+        сервиса. Первый сервис меняет только status; повторный вызов допустим.
+        Клиент должен иметь доступ к адресу первого сервиса в заголовке Location.
       parameters:
         - $ref: '#/components/parameters/WorkerId'
       responses:
-        '200':
-          description: Работник уволен либо уже имел статус FIRED
-          content:
-            application/json:
+        '307':
+          description: Продолжить тот же PATCH-запрос в Worker Service; итоговый ответ возвращает первый сервис
+          headers:
+            Location:
+              description: Публичный URL операции смены статуса первого сервиса
               schema:
-                $ref: './worker-service.yaml#/components/schemas/Worker'
+                type: string
+                format: uri-reference
+              example: /api/workers/42?status=FIRED
         '400':
           $ref: '#/components/responses/BadRequest'
-        '410':
-          $ref: '#/components/responses/WorkerGone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '502':
-          $ref: '#/components/responses/BadGateway'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '504':
-          $ref: '#/components/responses/GatewayTimeout'
 
   /hr/move/{worker-id}/{id-from}/{id-to}:
     post:
@@ -77,8 +71,6 @@ paths:
           $ref: '#/components/responses/HrGone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
         '502':
           $ref: '#/components/responses/BadGateway'
         '503':
@@ -140,13 +132,6 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
 
-    WorkerGone:
-      description: Работник отсутствует или удалён
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-
     HrGone:
       description: Работник или организация отсутствует
       content:
@@ -184,13 +169,6 @@ components:
 
     GatewayTimeout:
       description: Превышено время ожидания Worker API
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-
-    InternalServerError:
-      description: Внутренняя ошибка HR Service
       content:
         application/json:
           schema:

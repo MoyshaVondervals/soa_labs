@@ -42,8 +42,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
     post:
       tags: [Workers]
@@ -68,10 +66,10 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /api/workers/{id}:
     parameters:
@@ -95,16 +93,15 @@ paths:
           $ref: '#/components/responses/Gone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
     put:
       tags: [Workers]
       operationId: replaceWorker
       summary: Полностью обновить работника
-      description: Заменяет изменяемые поля; id, creationDate и организация сохраняются.
+      description: Заменяет изменяемые поля; id, creationDate и организация сохраняются. Если текущий status отличается от expectedStatus, возвращает 409 без изменений.
       parameters:
         - $ref: '#/components/parameters/Worker'
+        - $ref: '#/components/parameters/ExpectedStatus'
       responses:
         '200':
           description: Работник обновлён
@@ -114,12 +111,40 @@ paths:
                 $ref: '#/components/schemas/Worker'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '410':
           $ref: '#/components/responses/Gone'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags: [Workers]
+      operationId: updateWorkerStatus
+      summary: Изменить статус работника
+      description: Изменяет только status; остальные поля сохраняются. При несовпадении текущего status с expectedStatus возвращает 409 без изменений.
+      parameters:
+        - $ref: '#/components/parameters/WorkerStatus'
+        - $ref: '#/components/parameters/ExpectedStatus'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 
     delete:
       tags: [Workers]
@@ -135,8 +160,6 @@ paths:
           $ref: '#/components/responses/Gone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /api/workers/{id}/organization:
     parameters:
@@ -159,8 +182,6 @@ paths:
           $ref: '#/components/responses/Gone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Worker organizations]
       operationId: setWorkerOrganization
@@ -202,10 +223,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /api/workers/salary/sum:
     get:
@@ -222,8 +243,6 @@ paths:
                 $ref: '#/components/schemas/SalarySum'
         '406':
           $ref: '#/components/responses/NotAcceptable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /api/workers/position/greater-than/{position}:
     get:
@@ -246,8 +265,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /api/workers/name/contains/{substring}:
     get:
@@ -270,8 +287,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
 components:
   parameters:
@@ -294,6 +309,24 @@ components:
       schema:
         $ref: '#/components/schemas/Position'
       example: LABORER
+
+    ExpectedStatus:
+      name: expectedStatus
+      in: query
+      required: false
+      description: Ожидаемый текущий статус; при несовпадении PUT или PATCH возвращает 409
+      schema:
+        $ref: '#/components/schemas/Status'
+      example: HIRED
+
+    WorkerStatus:
+      name: status
+      in: query
+      required: true
+      description: Новый статус работника
+      schema:
+        $ref: '#/components/schemas/Status'
+      example: FIRED
 
     NameSubstring:
       name: substring
@@ -424,6 +457,20 @@ components:
             message: Worker with id 42 does not exist
             path: /api/workers/42
 
+    Conflict:
+      description: Текущий статус работника отличается от expectedStatus
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    UnsupportedMediaType:
+      description: Передано тело запроса с неподдерживаемым форматом; данные принимаются только через URL
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
     UnprocessableEntity:
       description: Нарушены ограничения полей или правила sort/filter
       content:
@@ -433,13 +480,6 @@ components:
 
     NotAcceptable:
       description: Запрошен неподдерживаемый формат ответа
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-
-    InternalServerError:
-      description: Внутренняя ошибка сервиса
       content:
         application/json:
           schema:
