@@ -28,6 +28,14 @@
             deepLinking: true,
             displayRequestDuration: true,
             filter: true,
+            requestInterceptor: (request) => {
+                const url = new URL(request.url, window.location.href);
+                if (window.location.hostname === "localhost" && url.hostname === "helios.cs.ifmo.ru") {
+                    url.hostname = "localhost";
+                    request.url = url.toString();
+                }
+                return request;
+            },
             presets: [
                 SwaggerUIBundle.presets.apis,
                 SwaggerUIStandalonePreset

@@ -1,0 +1,27 @@
+embed-server --std-out=echo --server-config=standalone.xml
+
+module add --name=org.postgresql --resources=/tmp/postgresql.jar --dependencies=jakarta.transaction.api,java.sql
+/subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql, driver-module-name=org.postgresql, driver-class-name=org.postgresql.Driver)
+data-source add --name=WorkerDS --jndi-name=java:/jdbc/WorkerDS --driver-name=postgresql --connection-url=${env.DB_URL} --user-name=${env.DB_USER} --password=${env.DB_PASSWORD} --validate-on-match=true --valid-connection-checker-class-name=org.jboss.jca.adapters.jdbc.extensions.postgres.PostgreSQLValidConnectionChecker
+
+/subsystem=elytron/key-store=workerKS:add(path=/opt/tls/worker.p12, type=PKCS12, credential-reference={clear-text=${env.TLS_PASSWORD}})
+/subsystem=elytron/key-manager=workerKM:add(key-store=workerKS, credential-reference={clear-text=${env.TLS_PASSWORD}})
+/subsystem=elytron/server-ssl-context=workerSSL:add(key-manager=workerKM, protocols=["TLSv1.2","TLSv1.3"])
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context, value=workerSSL)
+
+/subsystem=elytron/server-ssl-context=applicationSSC:remove
+/subsystem=elytron/key-manager=applicationKM:remove
+/subsystem=elytron/key-store=applicationKS:remove
+
+/subsystem=remoting/http-connector=http-remoting-connector:write-attribute(name=connector-ref, value=https)
+/subsystem=undertow/server=default-server/http-listener=default:remove
+
+/subsystem=undertow/server=default-server/host=default-host/location=\/:remove
+
+/system-property=app.cors.origin:add(value="https://localhost:8543")
+/system-property=app.cors.allow.hr.redirect:add(value=true)
+
+/subsystem=ee/service=default-bindings:undefine-attribute(name=datasource)
+data-source remove --name=ExampleDS
+
+stop-embedded-server

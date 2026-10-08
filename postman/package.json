@@ -1,0 +1,11 @@
+{
+  "name": "soa-lab2-postman",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-collection.mjs soa-lab2.postman_collection.json"
+  },
+  "devDependencies": {
+    "yaml": "2.8.1"
+  }
+}

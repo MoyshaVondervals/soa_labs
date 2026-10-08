@@ -1,0 +1,49 @@
+name: soa-lab2
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: soa_lab2
+      POSTGRES_USER: soa
+      POSTGRES_PASSWORD: ${SOA_DB_PASSWORD:?run bash docker/init.sh first}
+    ports: ["127.0.0.1:15432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "soa", "-d", "soa_lab2"]
+      interval: 2s
+      retries: 30
+
+  wildfly:
+    build:
+      context: wildfly
+      additional_contexts:
+        dist: ../.local/dist
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/soa_lab2
+      DB_USER: soa
+      DB_PASSWORD: ${SOA_DB_PASSWORD:?run bash docker/init.sh first}
+      TLS_PASSWORD: ${SOA_TLS_PASSWORD:?run bash docker/init.sh first}
+    ports: ["127.0.0.1:8543:8443"]
+    volumes:
+      - ../worker-service/build/libs:/deploy:ro
+      - ../.local/docker/tls:/opt/tls:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  payara:
+    build:
+      context: payara
+      additional_contexts:
+        dist: ../.local/dist
+    environment:
+      TLS_PASSWORD: ${SOA_TLS_PASSWORD:?run bash docker/init.sh first}
+      WORKER_TRUSTSTORE_PASSWORD: ${SOA_TLS_PASSWORD:?run bash docker/init.sh first}
+      PAYARA_MASTER_PASSWORD: ${SOA_PAYARA_MASTER_PASSWORD:?run bash docker/init.sh first}
+    ports: ["127.0.0.1:18081:8181"]
+    volumes:
+      - ../hr-service/build/libs:/deploy:ro
+      - ../.local/docker/tls:/opt/tls:ro
+
+volumes:
+  pgdata: {}
